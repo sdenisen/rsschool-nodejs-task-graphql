@@ -314,8 +314,13 @@ const RootQuery = new GraphQLObjectType({
     fields: {
         memberTypes: {
             type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(MemberType))),
-            resolve(parent, args, { prisma }) {
-                return prisma.memberType.findMany();
+            async resolve(parent, args, { prisma, memberTypeLoader }) {
+                const memberTypes = await prisma.memberType.findMany();
+                memberTypes.forEach((memberType) =>
+                    memberTypeLoader.prime(memberType.id, memberType),
+                );
+
+                return memberTypes;
             },
         },
 
@@ -324,21 +329,29 @@ const RootQuery = new GraphQLObjectType({
             args: {
                 id: { type: new GraphQLNonNull(MemberTypeIdEnum) },
             },
-            async resolve(parent, args, { prisma }) {
-                const memberType = await prisma.memberType.findUnique({
-                    where: { id: args.id },
-                });
-                if (!memberType) {
-                    return null
-                }
-                return memberType;
+            async resolve(parent, { id }, { memberTypeLoader }) {
+                return memberTypeLoader.load(id);
             },
         },
 
         users: {
             type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(UserType))),
-            resolve(parent, args, { prisma }) {
-                return prisma.user.findMany();
+            async resolve(parent, args, { prisma, userLoader }, resolveInfo) {
+                const parsedInfo = parse(resolveInfo);
+                const { fields } = simplify(parsedInfo as ResolveTree, new GraphQLList(UserType));
+
+                const users = await prisma.user.findMany({
+                    include: {
+                        subscribedToUser: 'subscribedToUser' in fields,
+                        userSubscribedTo: 'userSubscribedTo' in fields,
+                    },
+                });
+
+                users.forEach((user) => {
+                    userLoader.prime(user.id, user);
+                });
+
+                return users;
             },
         },
 
@@ -347,22 +360,8 @@ const RootQuery = new GraphQLObjectType({
             args: {
                 id: { type: new GraphQLNonNull(UUIDType) },
             },
-            async resolve(parent, args, { prisma }) {
-                const user = await prisma.user.findUnique({
-                    where: { id: args.id },
-                    include: {
-                        profile: {
-                            include: {
-                                memberType: true,
-                            },
-                        },
-                        posts: true
-                    }
-                });
-                if (!user) {
-                    throw new Error('User not found');
-                }
-                return user;
+            async resolve(parent, { id }, { userLoader }) {
+                return userLoader.load(id);
             },
         },
 
