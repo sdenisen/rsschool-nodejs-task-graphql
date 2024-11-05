@@ -367,8 +367,12 @@ const RootQuery = new GraphQLObjectType({
 
         posts: {
             type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(PostType))),
-            resolve(parent, args, { prisma }) {
-                 return prisma.post.findMany();
+            async resolve(parent, args, { prisma, postLoader }) {
+                const posts = await prisma.post.findMany();
+                posts.forEach((post) => {
+                    postLoader.prime(post.id, post);
+                });
+                return posts;
             },
         },
 
@@ -377,21 +381,19 @@ const RootQuery = new GraphQLObjectType({
             args: {
                 id: { type: new GraphQLNonNull(UUIDType) },
             },
-            async resolve(parent, args, { prisma }) {
-                const post = await prisma.post.findUnique({
-                    where: { id: args.id },
-                });
-                if (!post) {
-                    throw new Error('Post not found');
-                }
-                return post;
+            async resolve(parent, { id }, { postLoader }) {
+                return postLoader.load(id);
             },
         },
 
         profiles: {
             type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(ProfileType))),
-            resolve(parent, args, { prisma }) {
-                return prisma.profile.findMany();
+            async resolve(parent, args, { prisma, profileByIdLoader }) {
+                const profiles = await prisma.profile.findMany();
+                profiles.forEach((profile) => {
+                    profileByIdLoader.prime(profile.id, profile);
+                });
+                return profiles;
             },
         },
 
@@ -400,14 +402,8 @@ const RootQuery = new GraphQLObjectType({
             args: {
                 id: { type: new GraphQLNonNull(UUIDType) },
             },
-            async resolve(parent, args, { prisma }) {
-                const profile = await prisma.profile.findUnique({
-                    where: { id: args.id },
-                });
-                if (!profile) {
-                    throw new Error('Profile not found');
-                }
-                return profile;
+            async resolve(parent, { id }, { profileByIdLoader }) {
+                return profileByIdLoader.load(id);
             },
         },
     },
